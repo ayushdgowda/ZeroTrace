@@ -1,10 +1,11 @@
 from django.contrib import admin
-from django.urls import path, include
+from chatapp.views import TaskStatusView
+from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 from chatapp.views import (
     RegisterView, LoginView, ChatView, ChatHistoryView,
     ConversationListView, ConversationDetailView,
-    UsageStatsView, OllamaStatusView
+    UsageStatsView, OllamaStatusView, NLPAnalyzeView,
 )
 
 urlpatterns = [
@@ -26,6 +27,11 @@ urlpatterns = [
     # Analytics
     path('api/usage/', UsageStatsView.as_view(), name='usage_stats'),
 
+    # NLP Analysis
+    path('api/nlp/analyze/', NLPAnalyzeView.as_view(), name='nlp_analyze'),
+
     # Status
     path('api/status/', OllamaStatusView.as_view(), name='ollama_status'),
+
+    path('api/tasks/<str:task_id>/', TaskStatusView.as_view(), name='task_status'),
 ]

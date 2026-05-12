@@ -313,6 +313,9 @@ export default function ChatPage() {
             <button onClick={() => navigate('/settings')} style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.15)', borderRadius: 8, padding: '7px 14px', color: '#38bdf8', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
               ⚙️ Settings
             </button>
+            <button onClick={() => navigate('/benchmarks')} style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: 8, padding: '7px 14px', color: '#4ade80', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
+  📊 Benchmarks
+</button>
           </div>
         </div>
 

@@ -1,31 +1,33 @@
+"""
+ZeroTrace Ollama Client
+Connects to local Ollama LLM and uses spaCy NLP for intent detection.
+"""
+
 import requests
 import json
 from django.conf import settings
 
-
 OLLAMA_URL = getattr(settings, 'OLLAMA_BASE_URL', 'http://localhost:11434')
 OLLAMA_MODEL = getattr(settings, 'OLLAMA_MODEL', 'llama3.2:latest')
 
-SYSTEM_PROMPT = """You are ZeroTrace AI, a powerful local AI assistant that runs 100% on the user's machine.
-You can help with:
-- Research and summarization
-- Writing and editing
-- Task automation planning (browser, email, file tasks)
-- Code generation and debugging
-- PDF creation and document generation
-- General questions and analysis
+SYSTEM_PROMPT = """You are ZeroTrace AI, a powerful privacy-first local AI assistant.
+You run 100% on the user's machine using Ollama. No data is sent to any cloud.
 
-When the user asks you to perform automation tasks (open browser, send email, fill forms, etc.),
-describe what you would do step by step, then confirm you are executing each step.
+You can:
+- Answer questions and have conversations
+- Help with research, writing, coding
+- Automate tasks: send emails, search web, create PDFs, scrape websites
+- Generate reports and summaries
 
-Always be helpful, concise, and remind the user that their data stays local and private.
+When asked to perform automation tasks, confirm what you're doing and report results clearly.
+Always remind users their data stays private and local.
+Be concise, helpful, and accurate.
 """
 
 
 def chat_with_ollama(messages: list, stream: bool = False):
     """
-    Send messages to Ollama and get a response.
-    messages: list of {role: 'user'|'assistant', content: str}
+    Send messages to Ollama and get response.
     Returns: (response_text, tokens_used)
     """
     payload = {
@@ -35,6 +37,7 @@ def chat_with_ollama(messages: list, stream: bool = False):
         'options': {
             'temperature': 0.7,
             'top_p': 0.9,
+            'num_predict': 1024,
         }
     }
 
@@ -46,7 +49,7 @@ def chat_with_ollama(messages: list, stream: bool = False):
     except requests.exceptions.ConnectionError:
         return "❌ Ollama is not running. Please start it with: `ollama serve`", 0
     except Exception as e:
-        return f"❌ Error communicating with Ollama: {str(e)}", 0
+        return f"❌ Error: {str(e)}", 0
 
 
 def _single_response(payload):
@@ -63,7 +66,6 @@ def _single_response(payload):
 
 
 def _stream_response(payload):
-    """Generator that yields text chunks as they arrive from Ollama."""
     with requests.post(
         f'{OLLAMA_URL}/api/chat',
         json=payload,
@@ -71,7 +73,6 @@ def _stream_response(payload):
         timeout=120
     ) as response:
         response.raise_for_status()
-        total_tokens = 0
         for line in response.iter_lines():
             if line:
                 try:
@@ -79,8 +80,6 @@ def _stream_response(payload):
                     chunk = data.get('message', {}).get('content', '')
                     if chunk:
                         yield chunk
-                    if data.get('done'):
-                        total_tokens = data.get('eval_count', 0) + data.get('prompt_eval_count', 0)
                 except json.JSONDecodeError:
                     continue
 
@@ -97,14 +96,23 @@ def check_ollama_status():
 
 
 def detect_task_type(message: str) -> str:
-    """Detect what kind of task the user is requesting."""
-    message_lower = message.lower()
-    if any(w in message_lower for w in ['email', 'gmail', 'send mail', 'inbox', 'reply']):
-        return 'email'
-    if any(w in message_lower for w in ['pdf', 'document', 'report', 'convert']):
-        return 'pdf'
-    if any(w in message_lower for w in ['browser', 'chrome', 'website', 'form', 'search', 'scrape', 'navigate']):
-        return 'browser'
-    if any(w in message_lower for w in ['research', 'find information', 'summarize', 'analyze']):
-        return 'research'
-    return 'chat'
+    """
+    Use spaCy NLP parser to detect task type.
+    Falls back to keyword matching if spaCy fails.
+    """
+    try:
+        from .nlp_parser import parse_intent
+        parsed = parse_intent(message)
+        return parsed.intent
+    except Exception:
+        # Fallback keyword matching
+        msg = message.lower()
+        if any(w in msg for w in ['email', 'send to', 'gmail', 'mail to']):
+            return 'email'
+        if any(w in msg for w in ['pdf', 'document', 'report']):
+            return 'pdf'
+        if any(w in msg for w in ['browser', 'search', 'google', 'chrome']):
+            return 'browser'
+        if any(w in msg for w in ['research', 'investigate', 'analyze']):
+            return 'research'
+        return 'chat'

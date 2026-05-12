@@ -5,6 +5,7 @@ import SignupPage from './pages/SignupPage'
 import ChatPage from './pages/ChatPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import SettingsPage from './pages/SettingsPage'
+import BenchmarkPage from './pages/BenchmarkPage'
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/benchmarks" element={<BenchmarkPage />} />
       </Routes>
     </BrowserRouter>
   )

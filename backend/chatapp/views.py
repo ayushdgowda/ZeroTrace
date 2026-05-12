@@ -6,17 +6,17 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from django.http import StreamingHttpResponse
 import json
 
 from .models import Conversation, Message, UsageLog
 from .serializers import (
     RegisterSerializer, UserSerializer,
     ConversationSerializer, ConversationListSerializer,
-    MessageSerializer, UsageLogSerializer
+    MessageSerializer,
 )
 from .ollama_client import chat_with_ollama, check_ollama_status, detect_task_type
 from .automation.task_executor import detect_and_execute
+from .nlp_parser import parse_intent, get_nlp_summary
 
 
 # ─────────────────────────────────────────────
@@ -65,7 +65,7 @@ class LoginView(APIView):
 
 
 # ─────────────────────────────────────────────
-# CHAT VIEW (with automation)
+# CHAT VIEW
 # ─────────────────────────────────────────────
 
 class ChatView(APIView):
@@ -74,11 +74,12 @@ class ChatView(APIView):
     def post(self, request):
         user_message = request.data.get('message', '').strip()
         conversation_id = request.data.get('conversation_id')
+        show_nlp = request.data.get('show_nlp', False)
 
         if not user_message:
             return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Get or create conversation
+        # ── Get or create conversation ────────────────────
         if conversation_id:
             try:
                 conversation = Conversation.objects.get(id=conversation_id, user=request.user)
@@ -87,33 +88,45 @@ class ChatView(APIView):
         else:
             conversation = Conversation.objects.create(user=request.user)
 
-        # Save user message
+        # ── Save user message ─────────────────────────────
         Message.objects.create(conversation=conversation, role='user', content=user_message)
 
         if not conversation.title:
             conversation.title = user_message[:60]
             conversation.save()
 
-        # Build history for Ollama
+        # ── spaCy NLP Parsing ─────────────────────────────
+        parsed = parse_intent(user_message)
+        nlp_summary = get_nlp_summary(parsed)
+        task_type = parsed.intent
+
+        # ── Build Ollama message history ──────────────────
         history = list(conversation.messages.order_by('created_at').values('role', 'content'))
         ollama_messages = [{'role': m['role'], 'content': m['content']} for m in history]
 
-        task_type = detect_task_type(user_message)
-
-        # Get AI response
+        # ── Get AI response ───────────────────────────────
         ai_response, tokens = chat_with_ollama(ollama_messages, stream=False)
 
-        # Check if automation should be executed
+        # ── Execute automation if needed ──────────────────
         automation = detect_and_execute(user_message, ai_response)
 
-        # Build final response
-        if automation['executed']:
-            final_response = f"{ai_response}\n\n---\n\n🤖 **Automation executed:**\n\n{automation['result']}"
-            task_type = automation['task_type']
-        else:
-            final_response = ai_response
+        # ── Build final response ──────────────────────────
+        parts = []
 
-        # Save assistant message
+        # Add NLP debug info if requested
+        if show_nlp:
+            parts.append(nlp_summary)
+            parts.append('\n---\n')
+
+        parts.append(ai_response)
+
+        if automation['executed']:
+            parts.append(f'\n\n---\n\n🤖 **Automation executed:**\n\n{automation["result"]}')
+            task_type = automation['task_type']
+
+        final_response = '\n'.join(parts)
+
+        # ── Save assistant message ────────────────────────
         msg = Message.objects.create(
             conversation=conversation,
             role='assistant',
@@ -121,8 +134,12 @@ class ChatView(APIView):
             tokens_used=tokens,
         )
 
-        # Log usage
-        UsageLog.objects.create(user=request.user, tokens_used=tokens, task_type=task_type)
+        # ── Log usage ─────────────────────────────────────
+        UsageLog.objects.create(
+            user=request.user,
+            tokens_used=tokens,
+            task_type=task_type,
+        )
 
         return Response({
             'message': final_response,
@@ -131,6 +148,7 @@ class ChatView(APIView):
             'message_id': msg.id,
             'task_type': task_type,
             'automation': automation,
+            'nlp': parsed.to_dict(),
         })
 
 
@@ -147,6 +165,26 @@ class ChatHistoryView(APIView):
             return Response(MessageSerializer(messages, many=True).data)
         except Conversation.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
+
+
+# ─────────────────────────────────────────────
+# NLP ANALYSIS ENDPOINT
+# ─────────────────────────────────────────────
+
+class NLPAnalyzeView(APIView):
+    """Endpoint to analyze text with spaCy — useful for debugging and IEEE demo."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        text = request.data.get('text', '')
+        if not text:
+            return Response({'error': 'text required'}, status=400)
+
+        parsed = parse_intent(text)
+        return Response({
+            'parsed': parsed.to_dict(),
+            'summary': get_nlp_summary(parsed),
+        })
 
 
 # ─────────────────────────────────────────────
@@ -224,3 +262,23 @@ class OllamaStatusView(APIView):
 
     def get(self, request):
         return Response(check_ollama_status())
+    
+    from celery.result import AsyncResult
+
+class TaskStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, task_id):
+        result = AsyncResult(task_id)
+        data = {
+            'task_id': task_id,
+            'status': result.status,
+            'ready': result.ready(),
+        }
+        if result.status == 'PROGRESS':
+            data['info'] = result.info
+        elif result.status == 'SUCCESS':
+            data['result'] = result.result
+        elif result.status == 'FAILURE':
+            data['error'] = str(result.result)
+        return Response(data)

@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'channels',
     'chatapp',
+    'django_celery_results',  # ← ADD THIS LINE
 ]
 
 MIDDLEWARE = [
@@ -106,5 +107,13 @@ CHANNEL_LAYERS = {
 }
 
 # Ollama local LLM config
+OLLAMA_BASE_URL = 'http://localhost:11434'
+OLLAMA_MODEL = 'llama3.2:latest'
+# Celery
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'django-db'
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TIMEZONE = 'Asia/Kolkata'
 OLLAMA_BASE_URL = 'http://localhost:11434'
 OLLAMA_MODEL = 'llama3.2:latest'
