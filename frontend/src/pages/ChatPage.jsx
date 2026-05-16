@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { conversationsAPI, analyticsAPI, statusAPI, authAPI } from '../api'
+import PDFPanel from '../components/PDFPanel'
+
 
 const WELCOME_SUGGESTIONS = [
   { icon: '🔍', text: 'Research top 5 AI startups in India and send report to gowdaayushd@gmail.com' },
@@ -28,6 +30,8 @@ export default function ChatPage() {
   const inputRef = useRef(null)
   const recognitionRef = useRef(null)
   const user = authAPI.getUser()
+  const [showPDFs, setShowPDFs] = useState(false)
+
 
   useEffect(() => {
     if (!authAPI.isLoggedIn()) { navigate('/login'); return }
@@ -307,6 +311,9 @@ export default function ChatPage() {
             <button onClick={() => setShowTasks(!showTasks)} style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.15)', borderRadius: 8, padding: '7px 14px', color: '#38bdf8', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
               📊 Stats
             </button>
+            <button onClick={() => setShowPDFs(!showPDFs)} style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: 8, padding: '7px 14px', color: '#4ade80', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
+  📄 Files
+</button>
             <button onClick={() => navigate('/analytics')} style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 8, padding: '7px 14px', color: '#a78bfa', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
               📈 Analytics
             </button>
@@ -466,6 +473,7 @@ export default function ChatPage() {
           )}
         </div>
       )}
+      {showPDFs && <PDFPanel onClose={() => setShowPDFs(false)} />}
     </div>
   )
 }

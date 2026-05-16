@@ -1,11 +1,15 @@
 from django.contrib import admin
-from chatapp.views import TaskStatusView
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 from chatapp.views import (
-    RegisterView, LoginView, ChatView, ChatHistoryView,
+    RegisterView, LoginView,
+    ChatView, ChatHistoryView,
     ConversationListView, ConversationDetailView,
-    UsageStatsView, OllamaStatusView, NLPAnalyzeView,
+    UsageStatsView, OllamaStatusView,
+    NLPAnalyzeView,
+    FeedbackScoresView,
+    PDFDownloadView, PDFListView,
+    TaskStatusView,
 )
 
 urlpatterns = [
@@ -27,11 +31,19 @@ urlpatterns = [
     # Analytics
     path('api/usage/', UsageStatsView.as_view(), name='usage_stats'),
 
-    # NLP Analysis
+    # NLP
     path('api/nlp/analyze/', NLPAnalyzeView.as_view(), name='nlp_analyze'),
+
+    # Adaptive Feedback
+    path('api/feedback/', FeedbackScoresView.as_view(), name='feedback_scores'),
+
+    # PDF
+    path('api/pdf/list/', PDFListView.as_view(), name='pdf_list'),
+    path('api/pdf/download/<str:filename>/', PDFDownloadView.as_view(), name='pdf_download'),
+
+    # Celery task status
+    path('api/tasks/<str:task_id>/', TaskStatusView.as_view(), name='task_status'),
 
     # Status
     path('api/status/', OllamaStatusView.as_view(), name='ollama_status'),
-
-    path('api/tasks/<str:task_id>/', TaskStatusView.as_view(), name='task_status'),
 ]
