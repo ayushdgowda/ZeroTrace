@@ -1,12 +1,49 @@
+"""
+ZeroTrace Task Executor
+Routes user commands to the appropriate automation module.
+Includes: Email, PDF, Browser, Research, Google, File Management, Web Automation, WhatsApp
+"""
+
 import re
 from .email_sender import send_email, parse_email_command
 from .pdf_generator import generate_pdf, parse_pdf_command
 from .browser_automation import execute_browser_command
 from .research_engine import run_research, parse_research_command
+from .feedback_engine import record_outcome
 
 
 def detect_and_execute(user_message: str, ai_response: str = '') -> dict:
     message_lower = user_message.lower().strip()
+
+    # ── Google automations ─────────────────────────────
+    google_keywords = [
+        'google calendar', 'create event', 'schedule meeting', 'add to calendar',
+        'google sheet', 'create spreadsheet', 'google doc', 'create document',
+        'upcoming events', 'my schedule',
+    ]
+    if any(kw in message_lower for kw in google_keywords):
+        return _execute_google(user_message, ai_response)
+
+    # ── WhatsApp ───────────────────────────────────────
+    if any(w in message_lower for w in ['whatsapp', 'whats app', 'send whatsapp']):
+        return _execute_whatsapp(user_message)
+
+    # ── File management ────────────────────────────────
+    file_keywords = [
+        'organize', 'sort files', 'clean up folder', 'find duplicates',
+        'compress folder', 'zip folder', 'rename files', 'move files',
+        'organize downloads', 'organize desktop',
+    ]
+    if any(kw in message_lower for kw in file_keywords):
+        return _execute_file_management(user_message)
+
+    # ── Web scraping / monitoring ──────────────────────
+    web_keywords = [
+        'scrape website', 'extract data from', 'monitor website',
+        'check website', 'download file from', 'watch website',
+    ]
+    if any(kw in message_lower for kw in web_keywords):
+        return _execute_web_automation(user_message)
 
     # ── Research mode ──────────────────────────────────
     research_keywords = [
@@ -56,52 +93,98 @@ def detect_and_execute(user_message: str, ai_response: str = '') -> dict:
     return {'executed': False, 'task_type': 'chat', 'result': '', 'steps': []}
 
 
+# ─── Executors ────────────────────────────────────────────────────────────────
+
+def _execute_google(user_message: str, ai_response: str) -> dict:
+    steps = [{'label': 'Connecting to Google API', 'status': 'running'}]
+    try:
+        from .google_automation import execute_google_command
+        result = execute_google_command(user_message, ai_response)
+        steps[-1]['status'] = 'done' if result.get('success') else 'failed'
+        return {
+            'executed': True,
+            'task_type': 'google',
+            'result': f"✅ {result.get('summary', result.get('message', ''))}" if result.get('success') else f"❌ {result.get('error')}",
+            'steps': steps,
+        }
+    except Exception as e:
+        steps[-1]['status'] = 'failed'
+        return {'executed': True, 'task_type': 'google', 'result': f'❌ Google error: {str(e)}\n\nMake sure `google_credentials.json` is in the backend folder.', 'steps': steps}
+
+
+def _execute_whatsapp(user_message: str) -> dict:
+    steps = [{'label': 'Opening WhatsApp Web', 'status': 'running'}]
+    try:
+        from .web_automation import execute_web_command
+        result = execute_web_command(user_message)
+        steps.extend(result.get('steps', []))
+        return {
+            'executed': True,
+            'task_type': 'whatsapp',
+            'result': result.get('summary', '❌ WhatsApp failed'),
+            'steps': steps,
+        }
+    except Exception as e:
+        return {'executed': True, 'task_type': 'whatsapp', 'result': f'❌ WhatsApp error: {str(e)}', 'steps': steps}
+
+
+def _execute_file_management(user_message: str) -> dict:
+    steps = [{'label': 'Analyzing file management command', 'status': 'done'}]
+    try:
+        from .file_manager import execute_file_command
+        result = execute_file_command(user_message)
+        steps.append({'label': result.get('summary', 'Done')[:50], 'status': 'done' if result.get('success') else 'failed'})
+        return {
+            'executed': True,
+            'task_type': 'file',
+            'result': result.get('summary', '❌ File operation failed'),
+            'steps': steps,
+        }
+    except Exception as e:
+        return {'executed': True, 'task_type': 'file', 'result': f'❌ File error: {str(e)}', 'steps': steps}
+
+
+def _execute_web_automation(user_message: str) -> dict:
+    steps = [{'label': 'Parsing web automation command', 'status': 'done'}]
+    try:
+        from .web_automation import execute_web_command
+        result = execute_web_command(user_message)
+        steps.append({'label': 'Web task completed', 'status': 'done' if result.get('success') else 'failed'})
+        return {
+            'executed': True,
+            'task_type': 'web',
+            'result': result.get('summary', '❌ Web automation failed'),
+            'steps': steps,
+        }
+    except Exception as e:
+        return {'executed': True, 'task_type': 'web', 'result': f'❌ Web error: {str(e)}', 'steps': steps}
+
+
 def _execute_research(user_message: str) -> dict:
-    """Execute full research pipeline."""
     steps = [{'label': 'Starting research pipeline', 'status': 'done'}]
     try:
         parsed = parse_research_command(user_message)
-        topic = parsed['topic']
-        to_email = parsed['to_email']
-
-        result = run_research(topic=topic, to_email=to_email)
+        result = run_research(topic=parsed['topic'], to_email=parsed['to_email'])
         steps = result.get('steps', steps)
-
-        # Build result message
-        lines = [f"✅ **Research Complete: {topic}**\n"]
+        lines = [f"✅ **Research Complete: {parsed['topic']}**\n"]
         lines.append(f"📖 **Sources scraped:** {result['sources_count']}")
         if result.get('pdf_path'):
             lines.append(f"📄 **PDF saved:** `{result['pdf_path']}`")
         if result.get('email_sent'):
             lines.append(f"📧 **Report emailed to:** {parsed['to_email']}")
         lines.append(f"\n---\n\n{result['summary'][:1500]}...")
-
-        return {
-            'executed': True,
-            'task_type': 'research',
-            'result': '\n'.join(lines),
-            'steps': steps,
-        }
+        return {'executed': True, 'task_type': 'research', 'result': '\n'.join(lines), 'steps': steps}
     except Exception as e:
-        return {
-            'executed': True,
-            'task_type': 'research',
-            'result': f'❌ Research failed: {str(e)}',
-            'steps': steps,
-        }
+        return {'executed': True, 'task_type': 'research', 'result': f'❌ Research failed: {str(e)}', 'steps': steps}
 
 
 def _execute_browser(user_message: str) -> dict:
-    steps = [{'label': 'Detecting browser command type', 'status': 'done'}]
+    steps = [{'label': 'Detecting browser command', 'status': 'done'}]
     try:
         result = execute_browser_command(user_message)
         steps.extend(result.get('steps', []))
-        if result['success']:
-            summary = result.get('summary', 'Browser task completed.')
-            final_result = f"✅ **Browser automation completed!**\n\n{summary}"
-        else:
-            final_result = f"❌ **Browser error:** {result.get('error', 'Unknown error')}"
-        return {'executed': True, 'task_type': 'browser', 'result': final_result, 'steps': steps}
+        final = f"✅ **Browser automation completed!**\n\n{result.get('summary', '')}" if result['success'] else f"❌ {result.get('error')}"
+        return {'executed': True, 'task_type': 'browser', 'result': final, 'steps': steps}
     except Exception as e:
         return {'executed': True, 'task_type': 'browser', 'result': f'❌ Browser error: {str(e)}', 'steps': steps}
 
@@ -111,24 +194,20 @@ def _execute_email(user_message: str, ai_response: str) -> dict:
     details = parse_email_command(user_message, ai_response)
     if not details['to']:
         return {'executed': True, 'task_type': 'email', 'result': '❌ No email address found.', 'steps': steps}
-    steps.append({'label': 'Connecting to Gmail SMTP', 'status': 'done'})
     steps.append({'label': f'Sending to {details["to"]}', 'status': 'running'})
     success, message = send_email(to_email=details['to'], subject=details['subject'], body=details['body'])
     steps[-1]['status'] = 'done' if success else 'failed'
-    result = (f"✅ **Email sent!**\n\n**To:** {details['to']}\n**Subject:** {details['subject']}\n\n{message}"
-              if success else f"❌ **Email failed:** {message}")
+    result = f"✅ **Email sent!**\n\n**To:** {details['to']}\n**Subject:** {details['subject']}\n\n{message}" if success else f"❌ **Email failed:** {message}"
     return {'executed': True, 'task_type': 'email', 'result': result, 'steps': steps}
 
 
 def _execute_pdf(user_message: str, ai_response: str) -> dict:
-    steps = [{'label': 'Parsing content for PDF', 'status': 'done'}]
+    steps = [{'label': 'Generating PDF', 'status': 'running'}]
     details = parse_pdf_command(user_message)
     content = ai_response if ai_response else details['content']
-    steps.append({'label': f'Generating PDF: {details["title"]}', 'status': 'running'})
     success, filepath, message = generate_pdf(details['title'], content)
     steps[-1]['status'] = 'done' if success else 'failed'
-    result = (f"✅ **PDF Created!**\n\n**Title:** {details['title']}\n**Location:** `{filepath}`"
-              if success else f"❌ **PDF failed:** {message}")
+    result = f"✅ **PDF Created!**\n\n**Title:** {details['title']}\n**Location:** `{filepath}`" if success else f"❌ {message}"
     return {'executed': True, 'task_type': 'pdf', 'result': result, 'steps': steps}
 
 
@@ -140,16 +219,14 @@ def _execute_pdf_and_email(user_message: str, ai_response: str) -> dict:
     steps[-1]['status'] = 'done' if pdf_success else 'failed'
     if not pdf_success:
         return {'executed': True, 'task_type': 'pdf+email', 'result': f'❌ PDF failed: {pdf_message}', 'steps': steps}
-    steps.append({'label': 'Connecting to Gmail', 'status': 'done'})
     email_details = parse_email_command(user_message, ai_response)
     steps.append({'label': f'Sending to {email_details["to"]}', 'status': 'running'})
     email_success, email_message = send_email(
         to_email=email_details['to'],
         subject=email_details['subject'] or details['title'],
-        body=f'<p>PDF attached: <b>{details["title"]}</b></p><p>Sent via ZeroTrace AI.</p>',
+        body=f'<p>PDF attached: <b>{details["title"]}</b></p>',
         attachment_path=filepath,
     )
     steps[-1]['status'] = 'done' if email_success else 'failed'
-    result = (f"✅ **PDF created and emailed!**\n\n**PDF:** {details['title']}\n**Sent to:** {email_details['to']}"
-              if email_success else f"✅ PDF created but email failed: {email_message}")
+    result = f"✅ **PDF created and emailed!**\n\n**PDF:** {details['title']}\n**Sent to:** {email_details['to']}" if email_success else f"✅ PDF created but email failed: {email_message}"
     return {'executed': True, 'task_type': 'pdf+email', 'result': result, 'steps': steps}

@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
+from chatapp.views import RAGUploadView, RAGQueryView, RAGDocumentsView
 from chatapp.views import (
     RegisterView, LoginView,
     ChatView, ChatHistoryView,
@@ -10,6 +11,7 @@ from chatapp.views import (
     FeedbackScoresView,
     PDFDownloadView, PDFListView,
     TaskStatusView,
+    LLMRouterView, ModelStatsView,
 )
 
 urlpatterns = [
@@ -41,9 +43,18 @@ urlpatterns = [
     path('api/pdf/list/', PDFListView.as_view(), name='pdf_list'),
     path('api/pdf/download/<str:filename>/', PDFDownloadView.as_view(), name='pdf_download'),
 
+    # LLM Router
+    path('api/llm/route/', LLMRouterView.as_view(), name='llm_route'),
+    path('api/llm/models/', ModelStatsView.as_view(), name='model_stats'),
+
     # Celery task status
     path('api/tasks/<str:task_id>/', TaskStatusView.as_view(), name='task_status'),
 
     # Status
     path('api/status/', OllamaStatusView.as_view(), name='ollama_status'),
+
+    # RAG
+path('api/rag/upload/', RAGUploadView.as_view(), name='rag_upload'),
+path('api/rag/query/', RAGQueryView.as_view(), name='rag_query'),
+path('api/rag/documents/', RAGDocumentsView.as_view(), name='rag_documents'),
 ]

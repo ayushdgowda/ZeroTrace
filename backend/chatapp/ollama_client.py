@@ -1,6 +1,6 @@
 """
 ZeroTrace Ollama Client
-Connects to local Ollama LLM and uses spaCy NLP for intent detection.
+Connects to local Ollama LLM with intelligent model routing.
 """
 
 import requests
@@ -10,19 +10,25 @@ from django.conf import settings
 OLLAMA_URL = getattr(settings, 'OLLAMA_BASE_URL', 'http://localhost:11434')
 OLLAMA_MODEL = getattr(settings, 'OLLAMA_MODEL', 'llama3.2:latest')
 
-SYSTEM_PROMPT = """You are ZeroTrace AI, a powerful privacy-first local AI assistant.
-You run 100% on the user's machine using Ollama. No data is sent to any cloud.
-
-You can:
-- Answer questions and have conversations
-- Help with research, writing, coding
-- Automate tasks: send emails, search web, create PDFs, scrape websites
-- Generate reports and summaries
-
-When asked to perform automation tasks, confirm what you're doing and report results clearly.
-Always remind users their data stays private and local.
-Be concise, helpful, and accurate.
-"""
+SYSTEM_PROMPT = (
+    "You are ZeroTrace AI, a privacy-first local AI assistant.\n\n"
+    "IMPORTANT RULES:\n"
+    "- When automation tasks are executed (email, browser, files, research, calendar), "
+    "DO NOT explain how to do it with code examples\n"
+    "- DO NOT show Python code unless the user specifically asks for code\n"
+    "- Just acknowledge what the user wants in 1-2 sentences, then let the automation engine handle it\n"
+    "- Be concise — maximum 3-4 sentences for non-code responses\n"
+    "- Never say 'here is how you can do it' — just confirm the action briefly\n"
+    "- For automation requests like organize files, send email, search web: "
+    "just say 'On it!' or 'Executing now...' in one sentence\n"
+    "- For questions, answer directly and concisely\n\n"
+    "Examples:\n"
+    "- User: 'organize my downloads' -> Say: 'Organizing your Downloads folder now...'\n"
+    "- User: 'send email to x@gmail.com' -> Say: 'Sending email to x@gmail.com now...'\n"
+    "- User: 'what is AI?' -> Give a clear 2-3 sentence answer\n"
+    "- User: 'write python code to sort a list' -> Give the code\n\n"
+    "You run 100% locally on the user machine. No data is sent to any cloud server."
+)
 
 
 def chat_with_ollama(messages: list, stream: bool = False):
@@ -35,9 +41,9 @@ def chat_with_ollama(messages: list, stream: bool = False):
         'messages': [{'role': 'system', 'content': SYSTEM_PROMPT}] + messages,
         'stream': stream,
         'options': {
-            'temperature': 0.7,
+            'temperature': 0.4,
             'top_p': 0.9,
-            'num_predict': 1024,
+            'num_predict': 512,
         }
     }
 
@@ -47,9 +53,9 @@ def chat_with_ollama(messages: list, stream: bool = False):
         else:
             return _single_response(payload)
     except requests.exceptions.ConnectionError:
-        return "❌ Ollama is not running. Please start it with: `ollama serve`", 0
+        return "Ollama is not running. Please start it with: ollama serve", 0
     except Exception as e:
-        return f"❌ Error: {str(e)}", 0
+        return f"Error: {str(e)}", 0
 
 
 def _single_response(payload):
@@ -96,16 +102,12 @@ def check_ollama_status():
 
 
 def detect_task_type(message: str) -> str:
-    """
-    Use spaCy NLP parser to detect task type.
-    Falls back to keyword matching if spaCy fails.
-    """
+    """Use spaCy NLP parser to detect task type."""
     try:
         from .nlp_parser import parse_intent
         parsed = parse_intent(message)
         return parsed.intent
     except Exception:
-        # Fallback keyword matching
         msg = message.lower()
         if any(w in msg for w in ['email', 'send to', 'gmail', 'mail to']):
             return 'email'

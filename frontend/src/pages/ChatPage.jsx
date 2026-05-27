@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { conversationsAPI, analyticsAPI, statusAPI, authAPI } from '../api'
 import PDFPanel from '../components/PDFPanel'
-
+import ModelSelector from '../components/ModelSelector'
 
 const WELCOME_SUGGESTIONS = [
   { icon: '🔍', text: 'Research top 5 AI startups in India and send report to gowdaayushd@gmail.com' },
@@ -26,12 +26,13 @@ export default function ChatPage() {
   const [ollamaStatus, setOllamaStatus] = useState('checking')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [listening, setListening] = useState(false)
+  const [showPDFs, setShowPDFs] = useState(false)
+  const [selectedModel, setSelectedModel] = useState(null) // null = auto
+
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const recognitionRef = useRef(null)
   const user = authAPI.getUser()
-  const [showPDFs, setShowPDFs] = useState(false)
-
 
   useEffect(() => {
     if (!authAPI.isLoggedIn()) { navigate('/login'); return }
@@ -113,7 +114,8 @@ export default function ChatPage() {
       id: ++msgId,
       role: m.role,
       content: m.content,
-      tokens: m.tokens_used
+      tokens: m.tokens_used,
+      model: m.model || 'auto'
     })))
   }
 
@@ -141,7 +143,8 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: content,
           conversation_id: activeConvId,
-          stream: false
+          stream: false,
+          model: selectedModel
         })
       })
 
@@ -152,7 +155,8 @@ export default function ChatPage() {
           id: ++msgId,
           role: 'assistant',
           content: data.message,
-          tokens: data.tokens
+          tokens: data.tokens,
+          model: data.routing?.display_name || 'llama3.2'
         }])
         if (data.conversation_id) setActiveConvId(data.conversation_id)
         loadConversations()
@@ -298,9 +302,12 @@ export default function ChatPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: ollamaStatus === 'online' ? '#4ade80' : '#f87171', boxShadow: ollamaStatus === 'online' ? '0 0 6px #4ade80' : '0 0 6px #f87171' }} />
             <span style={{ fontSize: 13, color: '#64748b', fontFamily: "'JetBrains Mono', monospace" }}>
-              {ollamaStatus === 'online' ? 'llama3.2 · local · ready' : 'ollama offline — run: ollama serve'}
+              {ollamaStatus === 'online' ? 'ollama · local · ready' : 'ollama offline — run: ollama serve'}
             </span>
           </div>
+          
+          <ModelSelector selectedModel={selectedModel} onModelChange={setSelectedModel} />
+
           {listening && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '4px 12px' }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f87171', animation: 'pulse 1s infinite' }} />
@@ -312,8 +319,8 @@ export default function ChatPage() {
               📊 Stats
             </button>
             <button onClick={() => setShowPDFs(!showPDFs)} style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: 8, padding: '7px 14px', color: '#4ade80', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
-  📄 Files
-</button>
+              📄 Files
+            </button>
             <button onClick={() => navigate('/analytics')} style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 8, padding: '7px 14px', color: '#a78bfa', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
               📈 Analytics
             </button>
@@ -321,7 +328,10 @@ export default function ChatPage() {
               ⚙️ Settings
             </button>
             <button onClick={() => navigate('/benchmarks')} style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: 8, padding: '7px 14px', color: '#4ade80', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
-  📊 Benchmarks
+              📊 Benchmarks
+            </button>
+            <button onClick={() => navigate('/rag')} style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: 8, padding: '7px 14px', color: '#a78bfa', fontSize: 12, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>
+  📚 RAG
 </button>
           </div>
         </div>
@@ -358,7 +368,7 @@ export default function ChatPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                         <div style={{ width: 24, height: 24, borderRadius: 6, background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>Z</div>
                         <span style={{ fontSize: 12, color: '#334155', fontFamily: "'JetBrains Mono', monospace" }}>
-                          ZeroTrace · llama3.2{msg.tokens ? ` · ${msg.tokens} tokens` : ''}
+                          ZeroTrace · {msg.model || 'auto'}{msg.tokens ? ` · ${msg.tokens} tokens` : ''}
                         </span>
                       </div>
                     )}
